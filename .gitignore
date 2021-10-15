@@ -1,0 +1,15 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.idea/
+
+#files
+auth.yml
+telegram.yml
+config.yml
+announcements.json
+existing_coins.json
+scheduled_order.json
+executed_trades.json
+executed_sells_trades.json
