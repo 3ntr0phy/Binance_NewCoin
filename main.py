@@ -140,9 +140,16 @@ def getAllExistingCoins():
     else:
         allPairs = client.get_all_tickers()
         for coin in allPairs:
+            #we need all existing coins, check with btc and bnb as well
+            if 'BTC' in coin['symbol']:
+                coin_ = re.sub( 'BTC', '', coin['symbol'])
+                existing_coins.append(coin_)
+            if 'BNB' in coin['symbol']:
+                coin_ = re.sub( 'BNB', '', coin['symbol'])
+                existing_coins.append(coin_)
             if pairing in coin['symbol']:
-                coin = re.sub( pairing, '', coin['symbol'])
-                existing_coins.append(coin)
+                coin_ = re.sub( pairing, '', coin['symbol'])
+                existing_coins.append(coin_)
         save_json(coins_file, existing_coins)
 
 
@@ -339,72 +346,77 @@ def sell():
                     symbol = coin['symbol']
                     coin_bought = coin['fills'][0]['commissionAsset']
                     volume = float(client.get_asset_balance(asset=coin_bought)['free'])
-                    if volume > 0:
-                        volume= int(volume)
-                    sendmsg("Volume free {}".format(volume))
-                    last_price = get_price(symbol)
+                    if volume >0:
+                        if volume > 1:
+                            volume= int(volume)
+                        sendmsg("Volume free {}".format(volume))
+                        last_price = get_price(symbol)
 
-                    # update stop loss and take profit values if threshold is reached
-                    if float(last_price) > coin_tp and tsl_mode:
-                        # increase as absolute value for TP
-                        new_tp = float(last_price) + (float(last_price)*tp /100)
+                        # update stop loss and take profit values if threshold is reached
+                        if float(last_price) > coin_tp and tsl_mode:
+                            # increase as absolute value for TP
+                            new_tp = float(last_price) + (float(last_price)*tp /100)
 
-                        # same deal as above, only applied to trailing SL
-                        new_sl = float(last_price) - (float(last_price)*sl /100)
+                            # same deal as above, only applied to trailing SL
+                            new_sl = float(last_price) - (float(last_price)*sl /100)
 
-                        # new values to be added to the json file
-                        coin['tp'] = new_tp
-                        coin['sl'] = new_sl
-                        not_sold_orders.append(coin)
-                        flag_update = True
-
-                        threading.Thread(target=sendSpam, args=(symbol, f'Updated tp: {round(new_tp, 3)} and sl: {round(new_sl, 3)} for: {symbol}')).start()
-                    # close trade if tsl is reached or trail option is not enabled
-                    elif float(last_price) < coin_sl or float(last_price) > coin_tp:
-                        try:
-
-                            # sell for real if test mode is set to false
-                            if not test_mode:
-                                sell = client.create_order(symbol = symbol, side = 'SELL', type = 'MARKET', quantity = volume, recvWindow = "10000")
-
-
-                            sendmsg(f"Sold {symbol} at {(float(last_price) - stored_price) / float(stored_price)*100}")
-                            killSpam(symbol)
+                            # new values to be added to the json file
+                            coin['tp'] = new_tp
+                            coin['sl'] = new_sl
+                            not_sold_orders.append(coin)
                             flag_update = True
-                            # remove order from json file by not adding it
 
-                        except Exception as exception:
-                            wrong = traceback.format_exc(limit=None, chain=True)
-                            sendmsg(wrong)
+                            threading.Thread(target=sendSpam, args=(symbol, f'Updated tp: {round(new_tp, 3)} and sl: {round(new_sl, 3)} for: {symbol}')).start()
+                        # close trade if tsl is reached or trail option is not enabled
+                        elif float(last_price) < coin_sl or float(last_price) > coin_tp:
+                            try:
 
-                        # store sold trades data
+                                # sell for real if test mode is set to false
+                                if not test_mode:
+                                    sell = client.create_order(symbol = symbol, side = 'SELL', type = 'MARKET', quantity = volume, recvWindow = "10000")
+
+
+                                sendmsg(f"Sold {symbol} at {(float(last_price) - stored_price) / float(stored_price)*100}")
+                                killSpam(symbol)
+                                flag_update = True
+                                # remove order from json file by not adding it
+
+                            except Exception as exception:
+                                wrong = traceback.format_exc(limit=None, chain=True)
+                                sendmsg(wrong)
+
+                            # store sold trades data
+                            else:
+                                if os.path.exists(executed_sells_file):
+                                    sold_coins = load_json(executed_sells_file)
+
+                                else:
+                                    sold_coins = []
+
+                                if not test_mode:
+                                    sold_coins.append(sell)
+                                else:
+                                    sell = {
+                                                'symbol':symbol,
+                                                'price':last_price,
+                                                'volume':volume,
+                                                'time':datetime.timestamp(datetime.now()),
+                                                'profit': float(last_price) - stored_price,
+                                                'relative_profit': round((float(last_price) - stored_price) / stored_price*100, 3)
+                                                }
+                                    sold_coins.append(sell)
+                                save_json(executed_sells_file, sold_coins)
+
                         else:
-                            if os.path.exists(executed_sells_file):
-                                sold_coins = load_json(executed_sells_file)
-
-                            else:
-                                sold_coins = []
-
-                            if not test_mode:
-                                sold_coins.append(sell)
-                            else:
-                                sell = {
-                                            'symbol':symbol,
-                                            'price':last_price,
-                                            'volume':volume,
-                                            'time':datetime.timestamp(datetime.now()),
-                                            'profit': float(last_price) - stored_price,
-                                            'relative_profit': round((float(last_price) - stored_price) / stored_price*100, 3)
-                                            }
-                                sold_coins.append(sell)
-                            save_json(executed_sells_file, sold_coins)
-
+                            not_sold_orders.append(coin)
+                        if flag_update: save_json(executed_trades_file, not_sold_orders)
                     else:
-                        not_sold_orders.append(coin)
-                    if flag_update: save_json(executed_trades_file, not_sold_orders)
+                        sendmsg("Volume free not higher than 0, retry soon")
+                        time.sleep(0.5)
         except Exception as exception:       
             wrong = traceback.format_exc(limit=None, chain=True)
             sendmsg(wrong)
+            exit(-1)
         time.sleep(0.2)
 
 
