@@ -342,10 +342,9 @@ def sell():
                     stored_price = float(coin['price'])
                     coin_tp = coin['tp']
                     coin_sl = coin['sl']
-                    #volume = coin['executedQty']
+                    volume = float(coin['executedQty'])
                     symbol = coin['symbol']
-                    coin_bought = coin['fills'][0]['commissionAsset']
-                    volume = float(client.get_asset_balance(asset=coin_bought)['free'])
+
                     if volume >0:
                         if volume > 1:
                             volume= int(volume)
@@ -373,7 +372,17 @@ def sell():
 
                                 # sell for real if test mode is set to false
                                 if not test_mode:
-                                    sell = client.create_order(symbol = symbol, side = 'SELL', type = 'MARKET', quantity = volume, recvWindow = "10000")
+                                    try:
+                                        sell = client.create_order(symbol = symbol, side = 'SELL', type = 'MARKET', quantity = volume, recvWindow = "10000")
+                                    except Exception as exception:
+                                        coin_bought = coin['fills'][0]['commissionAsset']
+                                        volume = float(client.get_asset_balance(asset=coin_bought)['free'])
+                                        sendmsg("Volume free {} inside exception".format(volume))
+                                        if volume > 0:
+                                            if volume > 1:
+                                                volume = int(volume)
+                                            sell = client.create_order(symbol = symbol, side = 'SELL', type = 'MARKET', quantity = volume, recvWindow = "10000")
+
 
 
                                 sendmsg(f"Sold {symbol} at {(float(last_price) - stored_price) / float(stored_price)*100}")
@@ -451,7 +460,7 @@ def main():
             if not announcement in existing_Anouncements:
                 time_And_Pair = get_Pair_and_DateTime(announcement['code'])
                 if time_And_Pair is not None:
-                    if time_And_Pair[0] >= datetime.utcnow():
+                    if time_And_Pair[0] >= datetime.utcnow() and len(time_And_Pair[1]) > 0:
                         schedule_Order(time_And_Pair, announcement)
                         for pair in time_And_Pair[1]:
                             threading.Thread(target=place_Order_On_Time, args=(time_And_Pair[0], pair, threading.active_count() + 1)).start()
